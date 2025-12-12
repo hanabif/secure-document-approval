@@ -1,0 +1,5 @@
+{
+  "name": "Secure Document Frontend",
+  "version": "0.1.0",
+  "description": "Small meta file to silence dev server 404s"
+}

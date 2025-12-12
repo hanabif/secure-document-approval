@@ -1,0 +1,53 @@
+# Node / Next.js
+node_modules/
+.next/
+out/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Env / secrets
+.env
+.env.*
+
+# Logs
+logs/
+*.log
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Coverage / build artifacts
+coverage/
+dist/
+build/
+
+# Python / Django
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+*.egg-info/
+*.egg
+
+# Django media/static/runtime
+staticfiles/
+media/
+*.sqlite3
+
+# pytest / cache
+.pytest_cache/
+.mypy_cache/
+
+# Postman/Temp
+temp_upload.txt
+node_modules
