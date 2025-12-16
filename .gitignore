@@ -43,6 +43,7 @@ venv/
 staticfiles/
 media/
 *.sqlite3
+backups/
 
 # pytest / cache
 .pytest_cache/

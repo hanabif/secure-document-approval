@@ -5,25 +5,61 @@ from rest_framework.views import APIView
 from .models import Document, Approval
 from .serializers import DocumentSerializer, ApprovalSerializer
 from accounts.models import User
-from .permissions import can_user_approve_document, get_user_approval_level, CanViewDocument
+from .permissions import (
+    can_user_approve_document,
+    get_user_approval_level,
+    CanViewDocument,
+    WithinBusinessHoursOrPreapproved,
+    OfficeIPRequiredForApproval,
+    HRLeaveApprovalRule,
+)
+from audit.utils import log_user_action
 
 class DocumentListCreateView(generics.ListCreateAPIView):
     def get_queryset(self):
         return Document.objects.filter(owner=self.request.user)
     serializer_class = DocumentSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, WithinBusinessHoursOrPreapproved]
     parser_classes = [MultiPartParser, FormParser]
 
     def perform_create(self, serializer):
-        serializer.save(owner=self.request.user)
+        doc = serializer.save(owner=self.request.user)
+        try:
+            log_user_action(self.request, 'Document uploaded', f'Document "{doc.title}" (id={doc.id}) uploaded with classification {doc.classification}.')
+        except Exception:
+            pass
 
 class DocumentDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Document.objects.all()
     serializer_class = DocumentSerializer
-    permission_classes = [permissions.IsAuthenticated, CanViewDocument]
+    permission_classes = [permissions.IsAuthenticated, WithinBusinessHoursOrPreapproved, CanViewDocument]
+
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        try:
+            log_user_action(request, 'Document viewed', f'Document "{instance.title}" (id={instance.id}) viewed.')
+        except Exception:
+            pass
+        return super().retrieve(request, *args, **kwargs)
+
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        try:
+            log_user_action(request, 'Document updated', f'Document "{instance.title}" (id={instance.id}) updated.')
+        except Exception:
+            pass
+        return super().update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        try:
+            log_user_action(request, 'Document deleted', f'Document "{instance.title}" (id={instance.id}) deleted.')
+        except Exception:
+            pass
+        return super().destroy(request, *args, **kwargs)
 
 class DocumentApprovalView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, WithinBusinessHoursOrPreapproved, OfficeIPRequiredForApproval, HRLeaveApprovalRule]
 
     def post(self, request, pk):
         try:
@@ -47,6 +83,11 @@ class DocumentApprovalView(APIView):
         )
 
         self.update_document_status(document)
+        try:
+            action_txt = 'Document approved' if approved else 'Document rejected'
+            log_user_action(request, action_txt, f'Document "{document.title}" (id={document.id}). Comments: {comments}')
+        except Exception:
+            pass
         
         return Response(ApprovalSerializer(approval).data, status=status.HTTP_200_OK)
 
@@ -65,14 +106,14 @@ class DocumentApprovalView(APIView):
 
 class UserDocumentsView(generics.ListAPIView):
     serializer_class = DocumentSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, WithinBusinessHoursOrPreapproved]
 
     def get_queryset(self):
         return Document.objects.filter(owner=self.request.user)
 
 class DocumentsForApprovalView(generics.ListAPIView):
     serializer_class = DocumentSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, WithinBusinessHoursOrPreapproved]
 
     def get_queryset(self):
         user = self.request.user
@@ -96,7 +137,7 @@ import logging
 
 class ApproverDashboardView(generics.ListAPIView):
     serializer_class = DocumentSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, WithinBusinessHoursOrPreapproved]
 
     def get_queryset(self):
         user = self.request.user
@@ -122,7 +163,7 @@ class ApproverDashboardView(generics.ListAPIView):
 
 class ManagerDashboardView(generics.ListAPIView):
     serializer_class = DocumentSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, WithinBusinessHoursOrPreapproved]
 
     def get_queryset(self):
         user = self.request.user
@@ -133,7 +174,7 @@ class ManagerDashboardView(generics.ListAPIView):
 
 class SeniorManagerDashboardView(generics.ListAPIView):
     serializer_class = DocumentSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, WithinBusinessHoursOrPreapproved]
 
     def get_queryset(self):
         user = self.request.user
@@ -144,7 +185,7 @@ class SeniorManagerDashboardView(generics.ListAPIView):
 
 class DocumentAuditTrailView(generics.ListAPIView):
     serializer_class = ApprovalSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, WithinBusinessHoursOrPreapproved]
 
     def get_queryset(self):
         document_id = self.kwargs['pk']

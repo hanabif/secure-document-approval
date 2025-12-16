@@ -37,6 +37,8 @@ const AdminDashboard = () => {
     const [editedRoles, setEditedRoles] = useState<Record<number, number>>({});
     const [saving, setSaving] = useState(false);
     const [saveMessage, setSaveMessage] = useState<string | null>(null);
+    const [backupLoading, setBackupLoading] = useState(false);
+    const [backupMessage, setBackupMessage] = useState<string | null>(null);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -57,6 +59,20 @@ const AdminDashboard = () => {
         };
         fetchData();
     }, []);
+
+    const handleRunBackup = async () => {
+        setBackupLoading(true);
+        setBackupMessage(null);
+        try {
+            const res = await api.post('/audit/run-backup/');
+            setBackupMessage(res.data?.detail || 'Backup completed.');
+        } catch (err: any) {
+            const msg = err?.response?.data?.detail || 'Backup failed. Check server logs.';
+            setBackupMessage(String(msg));
+        } finally {
+            setBackupLoading(false);
+        }
+    };
 
     const handleRoleChange = (userId: number, newRole: number) => {
         setEditedRoles(prev => ({ ...prev, [userId]: newRole }));
@@ -111,20 +127,34 @@ const AdminDashboard = () => {
             <Navbar />
             <div className="container mx-auto p-6">
                 <h1 className="text-3xl font-bold mb-6">Admin Dashboard</h1>
-                <div className="flex border-b mb-6">
-                    <button
-                        className={`py-2 px-4 ${activeTab === 'users' ? 'border-b-2 border-blue-500' : ''}`}
-                        onClick={() => setActiveTab('users')}
-                    >
-                        User Management
-                    </button>
-                    <button
-                        className={`py-2 px-4 ${activeTab === 'audit' ? 'border-b-2 border-blue-500' : ''}`}
-                        onClick={() => setActiveTab('audit')}
-                    >
-                        Audit Log
-                    </button>
+                <div className="flex border-b mb-6 items-center justify-between">
+                    <div>
+                        <button
+                            className={`py-2 px-4 ${activeTab === 'users' ? 'border-b-2 border-blue-500' : ''}`}
+                            onClick={() => setActiveTab('users')}
+                        >
+                            User Management
+                        </button>
+                        <button
+                            className={`py-2 px-4 ${activeTab === 'audit' ? 'border-b-2 border-blue-500' : ''}`}
+                            onClick={() => setActiveTab('audit')}
+                        >
+                            Audit Log
+                        </button>
+                    </div>
+                    <div>
+                        <button
+                            onClick={handleRunBackup}
+                            disabled={backupLoading}
+                            className={`bg-indigo-600 text-white px-3 py-2 rounded ${backupLoading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-indigo-700'}`}
+                        >
+                            {backupLoading ? 'Running Backup…' : 'Run Backup'}
+                        </button>
+                    </div>
                 </div>
+                {backupMessage && (
+                    <div className="mb-4 text-sm text-center text-gray-700">{backupMessage}</div>
+                )}
 
                 {activeTab === 'users' && (
                     <div className="bg-white shadow-md rounded-lg overflow-hidden">

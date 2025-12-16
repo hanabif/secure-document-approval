@@ -1,12 +1,13 @@
 from django.urls import path
-from .views import UserList, UserDetail, CurrentUserView, ManageUserRoleView, RegisterView
+from .views import LoginView, MeView, RegisterView, VerifyCaptchaView, LogoutView, ChangePasswordView, ProfileView
 from rest_framework.authtoken.views import obtain_auth_token
 
 urlpatterns = [
-    path('users/', UserList.as_view(), name='user-list'),
-    path('users/<int:pk>/', UserDetail.as_view(), name='user-detail'),
-    path('users/<int:pk>/role/', ManageUserRoleView.as_view(), name='manage-user-role'),
-    path('auth/me/', CurrentUserView.as_view(), name='current-user'),
-    path('auth/login/', obtain_auth_token, name='api_token_auth'),
+    path('auth/login/', LoginView.as_view(), name='api_token_auth'),
+    path('auth/logout/', LogoutView.as_view(), name='api_logout'),
+    path('auth/change-password/', ChangePasswordView.as_view(), name='change_password'),
+    path('auth/profile/', ProfileView.as_view(), name='profile'),
+    path('auth/me/', MeView.as_view(), name='current-user'),
     path('auth/register/', RegisterView.as_view(), name='api_register'),
+    path('verify-recaptcha/', VerifyCaptchaView.as_view(), name='verify-recaptcha'),
 ]

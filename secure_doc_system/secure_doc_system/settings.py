@@ -53,6 +53,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'secure_doc_system.logging_middleware.UserActivityMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -106,12 +107,16 @@ AUTH_PASSWORD_VALIDATORS = [
     },
     {
         'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+        'OPTIONS': {'min_length': int(os.environ.get('PASSWORD_MIN_LENGTH', '10'))},
     },
     {
         'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
     },
     {
         'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
+    },
+    {
+        'NAME': 'accounts.validators.ComplexityValidator',
     },
 ]
 
@@ -137,6 +142,13 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+# Prefer Argon2 for hashing (strong against GPU and rainbow tables)
+PASSWORD_HASHERS = [
+    'django.contrib.auth.hashers.Argon2PasswordHasher',
+    'django.contrib.auth.hashers.PBKDF2PasswordHasher',
+    'django.contrib.auth.hashers.PBKDF2SHA1PasswordHasher',
+    'django.contrib.auth.hashers.BCryptSHA256PasswordHasher',
+]
 
 # REST framework default authentication: include TokenAuthentication so
 # views using IsAuthenticated accept `Authorization: Token <key>` headers.
@@ -150,3 +162,84 @@ REST_FRAMEWORK = {
 # Media files (for uploaded documents)
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+
+# RuBAC settings
+# Business hours in 24h format (local TIME_ZONE)
+BUSINESS_HOURS_START = int(os.environ.get('BUSINESS_HOURS_START', '8'))  # 08:00
+BUSINESS_HOURS_END = int(os.environ.get('BUSINESS_HOURS_END', '18'))    # 18:00
+
+# Optional: Office IP ranges (CIDR). If empty, IP rules are not enforced.
+ALLOWED_OFFICE_IP_RANGES = os.environ.get('ALLOWED_OFFICE_IP_RANGES', '')  # e.g., "192.168.0.0/16,10.0.0.0/8"
+
+# Log encryption key for audit logs (Fernet key). Example to generate:
+# python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+LOG_ENCRYPTION_KEY = os.environ.get('LOG_ENCRYPTION_KEY', '')
+
+# Admins for critical alert emails (use real emails in production)
+ADMINS = [
+    (os.environ.get('ADMIN_NAME', 'Admin'), os.environ.get('ADMIN_EMAIL', 'admin@example.com')),
+]
+
+# Default email backend (console in dev)
+EMAIL_BACKEND = os.environ.get('EMAIL_BACKEND', 'django.core.mail.backends.console.EmailBackend')
+DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'no-reply@example.com')
+SITE_URL = os.environ.get('SITE_URL', '')  # e.g., https://yourdomain.com
+
+# Enforce HTTPS in production if desired
+SECURE_SSL_REDIRECT = os.environ.get('ENFORCE_SSL', 'false').lower() in ('1', 'true', 'yes')
+
+# Backups
+BACKUP_DIR = Path(os.environ.get('BACKUP_DIR', BASE_DIR / 'backups'))
+BACKUP_RETENTION = int(os.environ.get('BACKUP_RETENTION', '7'))  # keep last N archives
+
+# CAPTCHA configuration
+CAPTCHA_ENABLED = os.environ.get('CAPTCHA_ENABLED', 'false').lower() in ('1', 'true', 'yes')
+CAPTCHA_PROVIDER = os.environ.get('CAPTCHA_PROVIDER', 'hcaptcha')  # hcaptcha|recaptcha
+CAPTCHA_SITE_KEY = os.environ.get('CAPTCHA_SITE_KEY', '')
+CAPTCHA_SECRET_KEY = os.environ.get('CAPTCHA_SECRET_KEY', '')
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'file': {
+            'level': 'INFO',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': BASE_DIR / 'logs/app.log',
+            'maxBytes': 1024*1024*5, # 5 MB
+            'backupCount': 5,
+            'formatter': 'verbose',
+        },
+        'console': {
+            'level': 'DEBUG',
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple',
+        },
+        'mail_admins': {
+            'level': 'ERROR',
+            'class': 'django.utils.log.AdminEmailHandler',
+        }
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['file', 'console'],
+            'level': 'INFO',
+            'propagate': True,
+        },
+        'secure_doc_system': {
+            'handlers': ['file', 'console'],
+            'level': 'DEBUG',
+            'propagate': True,
+        },
+    },
+}

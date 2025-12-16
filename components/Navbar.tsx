@@ -7,7 +7,7 @@ const Navbar = () => {
     const router = useRouter();
 
     const handleLogout = () => {
-        localStorage.removeItem('token');
+        localStorage.removeItem('access_token');
         router.push('/login');
     };
 
@@ -27,6 +27,9 @@ const Navbar = () => {
                     </Link>
                     <Link href="/documents/upload" className="text-gray-300 hover:text-white">
                         Upload
+                    </Link>
+                    <Link href="/profile" className="text-gray-300 hover:text-white">
+                        Profile
                     </Link>
                     <button
                         onClick={handleLogout}

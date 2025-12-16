@@ -14,6 +14,39 @@ const RegisterPage = () => {
   const [adminCode, setAdminCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+
+  const siteKey = process.env.NEXT_PUBLIC_HCAPTCHA_SITE_KEY || process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY;
+
+  // Lazy load hCaptcha/Recaptcha if a site key is configured
+  // We avoid bringing in additional npm deps and use the vendor script directly
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const anyWindow: any = typeof window !== 'undefined' ? window : {};
+  if (typeof window !== 'undefined' && siteKey && !anyWindow.__captchaLoaded) {
+    anyWindow.__captchaLoaded = true;
+    const isHCaptcha = !!process.env.NEXT_PUBLIC_HCAPTCHA_SITE_KEY;
+    const script = document.createElement('script');
+    script.src = isHCaptcha ? 'https://js.hcaptcha.com/1/api.js?render=explicit' : 'https://www.google.com/recaptcha/api.js?render=explicit';
+    script.async = true;
+    script.defer = true;
+    script.onload = () => {
+      try {
+        const renderFn = isHCaptcha ? anyWindow.hcaptcha?.render : anyWindow.grecaptcha?.render;
+        const containerId = 'captcha-container';
+        const el = document.getElementById(containerId);
+        if (renderFn && el) {
+          renderFn(el, {
+            sitekey: siteKey,
+            callback: (token: string) => setCaptchaToken(token),
+          });
+        }
+      } catch (e) {
+        console.warn('Captcha load failed', e);
+      }
+    };
+    document.head.appendChild(script);
+  }
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,10 +69,10 @@ const RegisterPage = () => {
         first_name: firstName.trim(),
         last_name: lastName.trim(),
       };
+      if (captchaToken) payload.captcha_token = captchaToken;
       if (adminCode && adminCode.trim()) payload.admin_code = adminCode.trim();
       const response = await api.post('/accounts/auth/register/', payload);
-      // If registration succeeded, redirect to login
-      router.push('/login');
+      setSuccess('Registration successful. Please check your email to verify your account before logging in.');
     } catch (err: any) {
       console.error('Registration error', err);
       const serverData = err.response?.data;
@@ -56,6 +89,7 @@ const RegisterPage = () => {
         <form onSubmit={handleRegister} className="bg-white shadow-lg rounded-lg px-8 pt-6 pb-8 mb-4">
           <h1 className="text-2xl font-bold text-center text-gray-800 mb-6">Create an Account</h1>
           {error && <p className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">{error}</p>}
+          {success && <p className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative mb-4" role="alert">{success}</p>}
 
           <div className="mb-4">
             <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="username">Username</label>
@@ -91,6 +125,12 @@ const RegisterPage = () => {
             <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="confirmPassword">Confirm Password</label>
             <input id="confirmPassword" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" required />
           </div>
+
+          {siteKey && (
+            <div className="mb-4">
+              <div id="captcha-container" />
+            </div>
+          )}
 
           <div className="flex items-center justify-between">
             <button type="submit" disabled={loading} className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded focus:outline-none focus:shadow-outline transition duration-300">
