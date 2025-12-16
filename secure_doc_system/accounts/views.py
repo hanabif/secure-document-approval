@@ -10,6 +10,10 @@ from .models import User
 from .utils import verify_captcha
 from audit.utils import log_user_action, log_security_event
 from audit.models import AuditSeverity
+import pyotp
+import qrcode
+import io
+import base64
 
 
 class ProfileView(generics.RetrieveUpdateAPIView):
@@ -71,15 +75,29 @@ class LoginView(generics.GenericAPIView):
     def post(self, request, *args, **kwargs):
         username = request.data.get('username')
         password = request.data.get('password')
+        otp_code = request.data.get('otp_code')
+
         user = authenticate(username=username, password=password)
         if user:
+            # Check MFA
+            if user.mfa_enabled:
+                if not otp_code:
+                    return Response({'mfa_required': True}, status=200)
+                
+                totp = pyotp.TOTP(user.mfa_secret)
+                # Use valid_window=2 to allow codes within ±60 seconds
+                if not totp.verify(otp_code, valid_window=2):
+                    log_security_event(request, 'Failed MFA attempt', f'Failed MFA attempt for user: {username}.', severity=AuditSeverity.WARNING)
+                    return Response({'error': 'Invalid 2FA code'}, status=400)
+
             token, created = Token.objects.get_or_create(user=user)
             log_user_action(request, 'User logged in', f'User {username} logged in successfully.', user=user)
             return Response({
                 'token': token.key,
                 'user_id': user.pk,
                 'email': user.email,
-                'role': user.role.upper() if user.role else 'EMPLOYEE'
+                'role': user.role.upper() if user.role else 'EMPLOYEE',
+                'mfa_enabled': user.mfa_enabled
             })
         log_security_event(request, 'Failed login attempt', f'Failed login attempt for username: {username}.', severity=AuditSeverity.WARNING)
         return Response({'error': 'Invalid Credentials'}, status=400)
@@ -97,6 +115,53 @@ class LogoutView(APIView):
             return Response(status=status.HTTP_204_NO_CONTENT)
         except Token.DoesNotExist:
             return Response({'error': 'No token found for the user.'}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class MfaSetupView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        if not user.mfa_secret:
+            user.mfa_secret = pyotp.random_base32()
+            user.save()
+        
+        totp = pyotp.TOTP(user.mfa_secret)
+        provisioning_uri = totp.provisioning_uri(name=user.email, issuer_name="SecureDocSystem")
+        
+        img = qrcode.make(provisioning_uri)
+        buffered = io.BytesIO()
+        img.save(buffered, format="PNG")
+        img_str = base64.b64encode(buffered.getvalue()).decode()
+        
+        return Response({
+            'secret': user.mfa_secret,
+            'qr_code': f"data:image/png;base64,{img_str}",
+            'otpauth_url': provisioning_uri
+        })
+
+class MfaVerifyView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        code = request.data.get('code')
+        
+        if not user.mfa_secret:
+            return Response({'error': 'MFA setup not started.'}, status=400)
+
+        totp = pyotp.TOTP(user.mfa_secret)
+        # Use valid_window=2 to allow codes within ±60 seconds (2 intervals)
+        # This accounts for slight time sync issues and user entry delays
+        if totp.verify(code, valid_window=2):
+            user.mfa_enabled = True
+            user.save()
+            log_user_action(request, 'MFA Enabled', f'User {user.username} enabled MFA.')
+            return Response({'detail': 'MFA enabled successfully.'})
+        
+        return Response({'error': 'Invalid code.'}, status=400)
 
 
 class MeView(APIView):

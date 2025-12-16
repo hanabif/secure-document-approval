@@ -4,6 +4,7 @@ from django.utils.deprecation import MiddlewareMixin
 from audit.utils import log_user_action
 from django.utils import timezone
 import traceback
+from django.http.request import RawPostDataException
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,8 @@ class UserActivityMiddleware(MiddlewareMixin):
                     log_entry['request_body'] = json.loads(request.body)
                 except (json.JSONDecodeError, UnicodeDecodeError):
                     log_entry['request_body'] = 'Could not decode request body'
+                except RawPostDataException:
+                     log_entry['request_body'] = 'Body already consumed'
 
             # Do not log sensitive response data
             if 'application/json' in response.get('Content-Type', ''):

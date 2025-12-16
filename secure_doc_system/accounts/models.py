@@ -43,6 +43,9 @@ class User(AbstractUser):
     email_verified = models.BooleanField(default=False)
     phone_number = models.CharField(max_length=32, blank=True, default='')
     phone_verified = models.BooleanField(default=False)
+    mfa_secret = models.CharField(max_length=32, blank=True, default='')
+    mfa_enabled = models.BooleanField(default=False)
+
 
     def is_locked_out(self) -> bool:
         return bool(self.lockout_until and self.lockout_until > timezone.now())
