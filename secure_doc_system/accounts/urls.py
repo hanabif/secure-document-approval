@@ -1,5 +1,17 @@
 from django.urls import path
-from .views import LoginView, MeView, RegisterView, VerifyCaptchaView, LogoutView, ChangePasswordView, ProfileView, MfaSetupView, MfaVerifyView
+from .views import (
+    LoginView,
+    MeView,
+    RegisterView,
+    VerifyCaptchaView,
+    LogoutView,
+    ChangePasswordView,
+    ProfileView,
+    MfaSetupView,
+    MfaVerifyView,
+    UsersListView,
+    UpdateUserRoleView,
+)
 from rest_framework.authtoken.views import obtain_auth_token
 
 urlpatterns = [
@@ -12,4 +24,6 @@ urlpatterns = [
     path('auth/mfa/setup/', MfaSetupView.as_view(), name='mfa-setup'),
     path('auth/mfa/verify/', MfaVerifyView.as_view(), name='mfa-verify'),
     path('verify-recaptcha/', VerifyCaptchaView.as_view(), name='verify-recaptcha'),
+    path('users/', UsersListView.as_view(), name='users-list'),
+    path('users/<int:user_id>/role/', UpdateUserRoleView.as_view(), name='user-role-update'),
 ]

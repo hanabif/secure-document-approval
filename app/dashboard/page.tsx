@@ -12,11 +12,11 @@ interface Document {
 }
 
 interface AuditLog {
-  id: number;
-  user: { username: string };
-  action: string;
-  timestamp: string;
-  details: string;
+    id: number;
+    user: { username: string } | null;
+    action: string;
+    timestamp: string;
+    details: string;
 }
 
 interface Stats {
@@ -119,15 +119,18 @@ const EmployeeDashboardPage = () => {
                         <h2 className="text-xl font-semibold mb-4 text-gray-700">Recent Activity on Your Documents</h2>
                         {recentActivity.length > 0 ? (
                              <ul className="space-y-4">
-                                {recentActivity.map((item) => (
-                                    <li key={item.id} className="border-b pb-3 last:border-b-0">
-                                        <p className="font-medium text-gray-800">{item.details}</p>
-                                        <div className="flex justify-between text-sm text-gray-500 mt-1">
-                                            <span>by <strong>{item.user.username}</strong></span>
-                                            <span>{formatTimestamp(item.timestamp)}</span>
-                                        </div>
-                                    </li>
-                                ))}
+                                {recentActivity.map((item) => {
+                                    const actor = item.user?.username || 'System';
+                                    return (
+                                        <li key={item.id} className="border-b pb-3 last:border-b-0">
+                                            <p className="font-medium text-gray-800">{item.details}</p>
+                                            <div className="flex justify-between text-sm text-gray-500 mt-1">
+                                                <span>by <strong>{actor}</strong></span>
+                                                <span>{formatTimestamp(item.timestamp)}</span>
+                                            </div>
+                                        </li>
+                                    );
+                                })}
                             </ul>
                         ) : (
                             <p className="text-gray-500">No recent activity to display.</p>

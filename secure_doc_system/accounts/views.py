@@ -2,7 +2,7 @@ from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.authtoken.models import Token
 from rest_framework.views import APIView
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.authentication import TokenAuthentication
 from django.contrib.auth import authenticate
 from .serializers import UserSerializer, ChangePasswordSerializer, ProfileSerializer
@@ -73,11 +73,18 @@ class LoginView(generics.GenericAPIView):
     permission_classes = (permissions.AllowAny,)
 
     def post(self, request, *args, **kwargs):
-        username = request.data.get('username')
+        username_input = request.data.get('username')
         password = request.data.get('password')
         otp_code = request.data.get('otp_code')
 
-        user = authenticate(username=username, password=password)
+        # Allow login by username or email (case-insensitive for email)
+        lookup_username = username_input
+        if username_input and '@' in username_input:
+            email_user = User.objects.filter(email__iexact=username_input).first()
+            if email_user:
+                lookup_username = email_user.username
+
+        user = authenticate(username=lookup_username, password=password)
         if user:
             # Check MFA
             if user.mfa_enabled:
@@ -91,15 +98,26 @@ class LoginView(generics.GenericAPIView):
                     return Response({'error': 'Invalid 2FA code'}, status=400)
 
             token, created = Token.objects.get_or_create(user=user)
-            log_user_action(request, 'User logged in', f'User {username} logged in successfully.', user=user)
+            log_user_action(request, 'User logged in', f'User {user.username} logged in successfully.', user=user)
+
+            # Normalize role
+            role_map = {
+                User.ROLE_EMPLOYEE: 'EMPLOYEE',
+                User.ROLE_MANAGER: 'MANAGER',
+                User.ROLE_SENIOR_MANAGER: 'SENIOR_MANAGER',
+                User.ROLE_DIRECTOR: 'DIRECTOR',
+                User.ROLE_ADMIN: 'ADMIN',
+            }
+            role_label = role_map.get(user.role, 'EMPLOYEE')
+
             return Response({
                 'token': token.key,
                 'user_id': user.pk,
                 'email': user.email,
-                'role': user.role.upper() if user.role else 'EMPLOYEE',
+                'role': role_label,
                 'mfa_enabled': user.mfa_enabled
             })
-        log_security_event(request, 'Failed login attempt', f'Failed login attempt for username: {username}.', severity=AuditSeverity.WARNING)
+        log_security_event(request, 'Failed login attempt', f'Failed login attempt for username: {username_input}.', severity=AuditSeverity.WARNING)
         return Response({'error': 'Invalid Credentials'}, status=400)
 
 
@@ -171,12 +189,50 @@ class MeView(APIView):
 
     def get(self, request):
         user = request.user
+        role_map = {
+            User.ROLE_EMPLOYEE: 'EMPLOYEE',
+            User.ROLE_MANAGER: 'MANAGER',
+            User.ROLE_SENIOR_MANAGER: 'SENIOR_MANAGER',
+            User.ROLE_DIRECTOR: 'DIRECTOR',
+            User.ROLE_ADMIN: 'ADMIN',
+        }
+        role_label = role_map.get(user.role, 'EMPLOYEE')
         return Response({
             'user_id': user.pk,
             'username': user.username,
             'email': user.email,
-            'role': user.role.upper() if user.role else 'EMPLOYEE'
+            'role': role_label
         })
+
+
+class UsersListView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAdminUser]
+
+    def get(self, request):
+        users = User.objects.all().values('id', 'username', 'email', 'role')
+        return Response(list(users), status=status.HTTP_200_OK)
+
+
+class UpdateUserRoleView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAdminUser]
+
+    def post(self, request, user_id):
+        try:
+            new_role = int(request.data.get('role'))
+        except (TypeError, ValueError):
+            return Response({'error': 'Invalid role'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            user = User.objects.get(pk=user_id)
+        except User.DoesNotExist:
+            return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        user.role = new_role
+        user.save(update_fields=['role'])
+        log_user_action(request, 'Role updated', f'Updated role for {user.username} to {new_role}', user=request.user)
+        return Response({'detail': 'Role updated'}, status=status.HTTP_200_OK)
 
 
 class VerifyCaptchaView(APIView):
